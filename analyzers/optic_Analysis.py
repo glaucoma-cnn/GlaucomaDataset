@@ -22,14 +22,14 @@ def count_pixels(path: Path) -> int:
     return int(np.sum(mask))
 
 
-class VesselPairAnalyzer:
+class OpticPairAnalyzer:
 
     def analyze(self, pairs: dict[str, dict[str, Path]]) -> pd.DataFrame:
         rows = []
 
         for image_id, paths in pairs.items():
-            ap = count_pixels(paths["artery"])
-            vp = count_pixels(paths["vein"])
+            ap = count_pixels(paths["optic_disc"])
+            vp = count_pixels(paths["optic_cup"])
 
             abs_diff    = abs(vp - ap)
             disc_pct    = abs_diff / max(vp, ap) * 100
@@ -37,12 +37,12 @@ class VesselPairAnalyzer:
 
             rows.append({
                 "image_id":            image_id,
-                "artery_pixels":       ap,
-                "vein_pixels":         vp,
-                "ratio_vein_artery":   vp / ap,
+                "optic_disk_pixels":       ap,
+                "optic_cup_pixels":         vp,
+                "ratio_optic_cup_optic_disk":   vp / ap,
                 "absolute_difference": abs_diff,
                 "discrepancy_pct":     disc_pct,
-                "predominance":        "Vein" if vp > ap else "Artery",
+                "predominance":        "OpticCup" if vp > ap else "OpticDisk",
                 "glaucoma_flag":       glaucoma_flag,
             })
 

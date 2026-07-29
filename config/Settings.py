@@ -1,8 +1,8 @@
 from pathlib import Path
 
-DATASET_ROOT = Path( r"" )
-ARTERY_FOLDER_NAME = "vessel-artery"
-VEIN_FOLDER_NAME   = "vessel-vein"
+DATASET_ROOT = Path( r"C:\Users\Giovana\.cache\kagglehub\datasets\deathtrooper\multichannel-glaucoma-benchmark-dataset\versions\10" )
+CUP_FOLDER_NAME = "optic-cup"
+DISC_FOLDER_NAME   = "opctic-disc"
 
 
 OUTPUT_DIR      = Path("vessel_Analysis/output")
