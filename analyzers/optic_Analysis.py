@@ -37,12 +37,12 @@ class OpticPairAnalyzer:
 
             rows.append({
                 "image_id":            image_id,
-                "optic_disk_pixels":       ap,
-                "optic_cup_pixels":         vp,
-                "ratio_optic_cup_optic_disk":   vp / ap,
+                "disc_pixels":       ap,
+                "cup_pixels":         vp,
+                "ratio_cup_disc":   vp / ap,
                 "absolute_difference": abs_diff,
                 "discrepancy_pct":     disc_pct,
-                "predominance":        "OpticCup" if vp > ap else "OpticDisk",
+                "predominance":        "Cup" if vp > ap else "Disc",
                 "glaucoma_flag":       glaucoma_flag,
             })
 
