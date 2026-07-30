@@ -1,6 +1,6 @@
 from pathlib import Path
 
-DATASET_ROOT = Path( r"C:\Users\Giovana\.cache\kagglehub\datasets\deathtrooper\multichannel-glaucoma-benchmark-dataset\versions\10" )
+DATASET_ROOT = Path( r"" )
 OPTIC_CUP_FOLDER_NAME = "optic-cup/optic-cup"
 OPTIC_DISC_FOLDER_NAME   = "optic-disc/optic-disc"
 
