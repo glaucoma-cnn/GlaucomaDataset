@@ -1,0 +1,28 @@
+============================================================
+  RELATÓRIO — Discrepância Copa Óptica vs Disco Óptico
+  Gerado em: 2026-08-05 17:23:21
+============================================================
+
+RESUMO
+  Imagens analisadas : 2873
+  Critério           : pixels não-pretos (qualquer canal > 0)
+
+RAZÃO (Copa Óptica / Disco Óptico)
+  Média   : 0.2780
+  Mediana : 0.2491
+  Desvio  : 0.1448
+  Min     : 0.0167
+  Max     : 0.9170
+
+DISCREPÂNCIA (%)
+  Média   : 72.20%
+  Mediana : 75.09%
+  Desvio  : 14.48%
+  Min     : 8.30%
+  Max     : 98.33%
+
+PREDOMINÂNCIA
+  Disc      : 2873 imagens (100.0%)
+
+
+============================================================

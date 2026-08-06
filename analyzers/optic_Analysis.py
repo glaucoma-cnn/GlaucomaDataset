@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from readers.Readers import PillowImageReader
-from config.Settings import GLAUCOMA_DISCREPANCY_THRESHOLD_PCT
+#from config.Settings import GLAUCOMA_DISCREPANCY_THRESHOLD_PCT
 
 
 reader = PillowImageReader()
@@ -33,7 +33,7 @@ class OpticPairAnalyzer:
 
             abs_diff    = abs(vp - ap)
             disc_pct    = abs_diff / max(vp, ap) * 100
-            glaucoma_flag = disc_pct > GLAUCOMA_DISCREPANCY_THRESHOLD_PCT if GLAUCOMA_DISCREPANCY_THRESHOLD_PCT else False
+            #glaucoma_flag = disc_pct > GLAUCOMA_DISCREPANCY_THRESHOLD_PCT if GLAUCOMA_DISCREPANCY_THRESHOLD_PCT else False
 
             rows.append({
                 "image_id":            image_id,
@@ -43,7 +43,7 @@ class OpticPairAnalyzer:
                 "absolute_difference": abs_diff,
                 "discrepancy_pct":     disc_pct,
                 "predominance":        "Cup" if vp > ap else "Disc",
-                "glaucoma_flag":       glaucoma_flag,
+                #"glaucoma_flag":       glaucoma_flag,
             })
 
         return pd.DataFrame(rows)
