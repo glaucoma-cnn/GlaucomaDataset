@@ -1,9 +1,13 @@
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 
-from config.Settings import CSV_FILENAME, OUTPUT_DIR, REPORT_FILENAME, GLAUCOMA_DISCREPANCY_THRESHOLD_PCT
+from config.Settings import (
+    CSV_FILENAME,
+    OUTPUT_DIR,
+    REPORT_FILENAME,
+    GLAUCOMA_AREA_CDR_THRESHOLD,
+)
 
 
 class CsvReporter:
@@ -12,6 +16,7 @@ class CsvReporter:
         dest = OUTPUT_DIR / CSV_FILENAME
         dest.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(dest, index=False)
+
         print(f"  [CSV] Salvo em: {dest}")
 
 
@@ -21,28 +26,29 @@ class TxtReporter:
         dest = OUTPUT_DIR / REPORT_FILENAME
         dest.parent.mkdir(parents=True, exist_ok=True)
 
-        r = df["ratio_cup_disc"]
+        cdr = df["area_cdr"]
         d = df["discrepancy_pct"]
+
         sep = "=" * 60
 
         lines = [
             sep,
-            "  RELATÓRIO — Discrepância Copa Óptica vs Disco Óptico",
+            "  RELATÓRIO — Análise do Disco Óptico e Copo Óptico",
             f"  Gerado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             sep,
 
             "",
             "RESUMO",
             f"  Imagens analisadas : {len(df)}",
-            f"  Critério           : pixels não-pretos (qualquer canal > 0)",
+            "  Critério das máscaras: pixels não-pretos (qualquer canal > 0)",
 
             "",
-            "RAZÃO (Copa Óptica / Disco Óptico)",
-            f"  Média   : {r.mean():.4f}",
-            f"  Mediana : {r.median():.4f}",
-            f"  Desvio  : {r.std():.4f}",
-            f"  Min     : {r.min():.4f}",
-            f"  Max     : {r.max():.4f}",
+            "AREA CDR (Área do Copo / Área do Disco)",
+            f"  Média   : {cdr.mean():.4f}",
+            f"  Mediana : {cdr.median():.4f}",
+            f"  Desvio  : {cdr.std():.4f}",
+            f"  Min     : {cdr.min():.4f}",
+            f"  Max     : {cdr.max():.4f}",
 
             "",
             "DISCREPÂNCIA (%)",
@@ -53,32 +59,47 @@ class TxtReporter:
             f"  Max     : {d.max():.2f}%",
 
             "",
-            "PREDOMINÂNCIA",
-            *[f"  {label:<10}: {n} imagens ({n / len(df) * 100:.1f}%)"
-              for label, n in df["predominance"].value_counts().items()],
+            "CONSISTÊNCIA ANATÔMICA",
+            (
+                f"  Consistentes : "
+                f"{df['anatomical_consistency'].sum()} / {len(df)}"
+            ),
+            (
+                f"  Inconsistentes: "
+                f"{(~df['anatomical_consistency']).sum()} / {len(df)}"
+            ),
 
             "",
-            "GLAUCOMA FLAG",
-            *([f"  Threshold : {GLAUCOMA_DISCREPANCY_THRESHOLD_PCT:.1f}%",
-               f"  Flagados  : {df['glaucoma_flag'].sum()} / {len(df)}"]
-              if GLAUCOMA_DISCREPANCY_THRESHOLD_PCT
-              else ["  Threshold : não definido (ver config/settings.py)"]),
+            "TRIAGEM POR AREA CDR",
+            *(
+                [
+                    f"  Threshold : {GLAUCOMA_AREA_CDR_THRESHOLD:.4f}",
+                    f"  Sinalizados: {df['glaucoma_flag'].sum()} / {len(df)}",
+                    "  Observação: sinalização preliminar; não representa diagnóstico.",
+                ]
+                if GLAUCOMA_AREA_CDR_THRESHOLD is not None
+                else [
+                    "  Threshold : não definido (ver config/Settings.py)"
+                ]
+            ),
 
             "",
-            "TOP 10 MAIORES DISCREPÂNCIAS",
+            "TOP 10 MAIORES AREA CDR",
             "-" * 60,
         ]
 
-        for _, row in df.nlargest(10, "discrepancy_pct").iterrows():
+        for _, row in df.nlargest(10, "area_cdr").iterrows():
             flag = "⚠" if row["glaucoma_flag"] else " "
+
             lines.append(
-                f"  {flag} {row['image_id']:<6} | "
-                f"Disco Óptico: {int(row['disc_pixels']):>8,} | "
-                f"Copa Óptica: {int(row['cup_pixels']):>8,} | "
-                f"Disc: {row['discrepancy_pct']:>5.1f}%"
+                f"  {flag} {row['image_id']:<20} | "
+                f"Disco: {int(row['disc_pixels']):>8,} | "
+                f"Copo: {int(row['cup_pixels']):>8,} | "
+                f"Area CDR: {row['area_cdr']:.4f}"
             )
 
         lines += ["", sep]
 
         dest.write_text("\n".join(lines), encoding="utf-8")
+
         print(f"  [TXT] Salvo em: {dest}")
