@@ -16,9 +16,9 @@ readers/Readers.py - Abre as pastas - Dataset baixado localmente, código no sup
 
 analyzers/optic_Analysis.py - o Coração principal da primeira parte do projeto, aqui que calcula a discrepância entre os pixels brancos do par disc/cup.
 
-reporters/Reporters.py - não feito ainda, mas a ideia é armazenar todos os resultados em CSV e/ou TXT.
+reporters/Reporters.py - Armazena todos os resultados em CSV e TXT.
 
-utils/Utils.py - não feito ainda, mas a ideia é montar o caminho das pastas aqui.
+utils/Utils.py - Monta o caminho de cada pasta aqui.
 
 
 Para Iniciar 
@@ -31,6 +31,8 @@ precisa configurar o caminho do dataset dependendo da sua máquina
 Abra o config/Settings e em DATASET_ROOT ajuste de acordo com a sua pasta.
 
 Para executar - python GlaucomaDataset/main.py
+
+ATENÇÃO *** ao baixar o Dataset do kaggleHub ele normalmente duplica cada pasta de imagens e não é interressante mudar a estrutura no qual foi baixada para não dar conflito no proprio site da kaggle, por cauda disso, em Settings eu coloquei para acessar as pastas como "optic-cup/optic-cup" (ex) para conseguir acessar corretamente. Se o seu dataset instalado não possuir essa duplicata, desconsidere e apague para teste em seu computador.
 
 
 Destrinchando as configurações - 
@@ -51,18 +53,19 @@ Fluxo da pipeline -
 main
 |
 |
-|--utils - quando for feito ele é o responsável por montar os caminhos da veia e artéria a partir do settings.py.
+|--utils - Responsável por montar os caminhos da veia e artéria a partir do settings.py.
 |
 |
 |-- GlaucomaBenchmarkReader.load_pairs() - no Readers.py
     -- Pareia as imagens do optic_disc e optic_cup pelo seu nome
 |
 |
-|-- OpticPairAnalyzer.analyze(pairs)
-    --agora, depois de montar o pares essa função é responsável, em cada par: 
-        --count_pixels() -abrir a imagem, jogar em um array numpy e contar os pixels ( todos que não são pretos)  e calcular o ratio, abs_diff, disc_pct, predominance, glaucoma_flag
-        esperado retornar um Dataframe
-CSV e txt ainda não feitos - não possui documentação ainda
+|-- OpticPairAnalyzer.analyze(pairs) - no analyzers
+|   --agora, depois de montar o pares essa função é responsável, em cada par: 
+|       --count_pixels() -abrir a imagem, jogar em um array numpy e contar os pixels ( todos que não são pretos)  e 
+|       calcular o ratio, abs_diff, disc_pct, predominance, glaucoma_flag
+|        esperado retornar um Dataframe
+|-- reporters - salva os resultados em CSV e TXT
 
 formula usada para calcular a divisão é a
 disc_pct = |optic_cup_pixels - optic_disc_pixels| / max(optic_cup_pixels,optic_disc_pixels) × 100
