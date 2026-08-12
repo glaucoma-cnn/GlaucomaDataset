@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from config.Settings import CSV_FILENAME, OUTPUT_DIR, REPORT_FILENAME, GLAUCOMA_DISCREPANCY_THRESHOLD_PCT
+from config.Settings import CSV_FILENAME, OUTPUT_DIR, REPORT_FILENAME #GLAUCOMA_DISCREPANCY_THRESHOLD_PCT
 
 
 class CsvReporter:
@@ -58,25 +58,25 @@ class TxtReporter:
               for label, n in df["predominance"].value_counts().items()],
 
             "",
-            "GLAUCOMA FLAG",
-            *([f"  Threshold : {GLAUCOMA_DISCREPANCY_THRESHOLD_PCT:.1f}%",
-               f"  Flagados  : {df['glaucoma_flag'].sum()} / {len(df)}"]
-              if GLAUCOMA_DISCREPANCY_THRESHOLD_PCT
-              else ["  Threshold : não definido (ver config/settings.py)"]),
+            #"GLAUCOMA FLAG",
+            #*([f"  Threshold : {GLAUCOMA_DISCREPANCY_THRESHOLD_PCT:.1f}%",
+              # f"  Flagados  : {df['glaucoma_flag'].sum()} / {len(df)}"]
+              #if GLAUCOMA_DISCREPANCY_THRESHOLD_PCT
+             # else ["  Threshold : não definido (ver config/settings.py)"]),
 
-            "",
-            "TOP 10 MAIORES DISCREPÂNCIAS",
-            "-" * 60,
+            #"",
+          #  "TOP 10 MAIORES DISCREPÂNCIAS",
+          #  "-" * 60,
         ]
 
-        for _, row in df.nlargest(10, "discrepancy_pct").iterrows():
-            flag = "⚠" if row["glaucoma_flag"] else " "
-            lines.append(
-                f"  {flag} {row['image_id']:<6} | "
-                f"Disco Óptico: {int(row['disc_pixels']):>8,} | "
-                f"Copa Óptica: {int(row['cup_pixels']):>8,} | "
-                f"Disc: {row['discrepancy_pct']:>5.1f}%"
-            )
+       # for _, row in df.nlargest(10, "discrepancy_pct").iterrows():
+        #    flag = "⚠" if row["glaucoma_flag"] else " "
+         #   lines.append(
+          #      f"  {flag} {row['image_id']:<6} | "
+           #     f"Disco Óptico: {int(row['disc_pixels']):>8,} | "
+            #    f"Copa Óptica: {int(row['cup_pixels']):>8,} | "
+             #   f"Disc: {row['discrepancy_pct']:>5.1f}%"
+           # )
 
         lines += ["", sep]
 
