@@ -1,13 +1,13 @@
 ============================================================
-  RELATÓRIO — Discrepância Copa Óptica vs Disco Óptico
-  Gerado em: 2026-08-05 17:23:21
+  RELATÓRIO — Análise do Disco Óptico e Copo Óptico
+  Gerado em: 2026-08-12 14:36:39
 ============================================================
 
 RESUMO
   Imagens analisadas : 2873
-  Critério           : pixels não-pretos (qualquer canal > 0)
+  Critério das máscaras: pixels não-pretos (qualquer canal > 0)
 
-RAZÃO (Copa Óptica / Disco Óptico)
+AREA CDR (Área do Copo / Área do Disco)
   Média   : 0.2780
   Mediana : 0.2491
   Desvio  : 0.1448
@@ -21,8 +21,24 @@ DISCREPÂNCIA (%)
   Min     : 8.30%
   Max     : 98.33%
 
-PREDOMINÂNCIA
-  Disc      : 2873 imagens (100.0%)
+CONSISTÊNCIA ANATÔMICA
+  Consistentes : 2873 / 2873
+  Inconsistentes: 0 / 2873
 
+TRIAGEM POR AREA CDR
+  Threshold : não definido (ver config/Settings.py)
+
+TOP 10 MAIORES AREA CDR
+------------------------------------------------------------
+    ORIGA-3              | Disco:    5,555 | Copo:    5,094 | Area CDR: 0.9170
+    DRISHTI-GS1-test-36  | Disco:    6,957 | Copo:    5,754 | Area CDR: 0.8271
+    DRISHTI-GS1-train-6  | Disco:    7,024 | Copo:    5,792 | Area CDR: 0.8246
+    DRISHTI-GS1-test-11  | Disco:    8,563 | Copo:    7,000 | Area CDR: 0.8175
+    DRISHTI-GS1-train-4  | Disco:    8,932 | Copo:    7,253 | Area CDR: 0.8120
+    DRISHTI-GS1-test-21  | Disco:    6,659 | Copo:    5,341 | Area CDR: 0.8021
+    DRISHTI-GS1-train-20 | Disco:    7,923 | Copo:    6,349 | Area CDR: 0.8013
+    DRISHTI-GS1-train-5  | Disco:    6,190 | Copo:    4,919 | Area CDR: 0.7947
+    ORIGA-327            | Disco:    3,369 | Copo:    2,673 | Area CDR: 0.7934
+    DRISHTI-GS1-test-3   | Disco:   12,887 | Copo:   10,182 | Area CDR: 0.7901
 
 ============================================================

@@ -1,3 +1,15 @@
 # Base de dados
 
 kagglehub/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.glaucoma/
+
+# Local/project data
+datasets/
+.glaucoma/
+audit/
