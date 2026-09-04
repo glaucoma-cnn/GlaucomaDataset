@@ -8,6 +8,8 @@ O código também permite realizar uma **triagem preliminar e experimental** bas
 
 > **Importante:** a sinalização produzida pelo código é apenas uma ferramenta exploratória e didática. Ela **não representa diagnóstico clínico de glaucoma**.
 
+teste
+
 ---
 
 # Estrutura do projeto
