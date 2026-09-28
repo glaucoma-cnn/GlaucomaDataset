@@ -76,6 +76,8 @@ formam um par correspondente à mesma imagem.
 
 A classe `PillowImageReader` utiliza a biblioteca Pillow para abrir a imagem e convertê-la para um array NumPy.
 
+`GlaucomaBenchmarkReader.load_pairs()` retorna um `PairingResult`, contendo não só os pares válidos, mas também os arquivos sem par e os nomes duplicados encontrados em cada pasta (detalhado em **Pareamento de máscaras e relatório de consistência**).
+
 ---
 
 ## `analyzers/optic_Analysis.py`
@@ -91,6 +93,9 @@ Para cada par de máscaras de disco e copo óptico, o módulo:
 5. Calcula medidas exploratórias auxiliares.
 6. Verifica uma condição simples de consistência anatômica.
 7. Opcionalmente aplica um limiar de Area CDR para triagem preliminar.
+8. Extrai features morfológicas de forma (perímetro, excentricidade, razão de aspecto e circularidade) tanto do disco quanto do copo.
+
+Imagens que não puderem ser abertas (arquivo corrompido ou formato inválido) são ignoradas individualmente, sem interromper o processamento das demais — ver **Tratamento de erros**.
 
 O resultado é armazenado em um `DataFrame` do Pandas.
 
@@ -100,10 +105,11 @@ O resultado é armazenado em um `DataFrame` do Pandas.
 
 Responsável por armazenar e apresentar os resultados produzidos pela análise.
 
-São gerados dois tipos de arquivo:
+São gerados três tipos de arquivo:
 
 * **CSV:** contém os resultados individuais de cada imagem.
-* **TXT:** contém um resumo estatístico da execução.
+* **TXT (análise):** contém um resumo estatístico da execução.
+* **TXT (consistência):** contém o relatório de pareamento — ver **Pareamento de máscaras e relatório de consistência**.
 
 O relatório textual apresenta informações como:
 
@@ -147,8 +153,10 @@ Pasta destinada a códigos auxiliares utilizados na preparação ou aquisição 
 Instale as dependências utilizadas nesta etapa:
 
 ```bash
-pip install pillow numpy pandas
+pip install pillow numpy pandas scikit-image
 ```
+
+`scikit-image` foi adicionada para o cálculo das features morfológicas (ver seção **Features morfológicas do disco e do copo**).
 
 ---
 
@@ -523,6 +531,62 @@ Isso permite detectar explicitamente máscaras potencialmente inválidas em vez 
 
 ---
 
+# Pareamento de máscaras e relatório de consistência
+
+`GlaucomaBenchmarkReader.load_pairs()` pareia as máscaras de disco e copo óptico pelo nome do arquivo. Além dos pares válidos, o método agora também identifica:
+
+* **discos sem copo correspondente**;
+* **copos sem disco correspondente**;
+* **nomes de arquivo duplicados** dentro da pasta de disco ou de copo.
+
+Esse resultado é representado por `PairingResult`:
+
+```python
+@dataclass
+class PairingResult:
+    pairs: dict[str, dict[str, Path]]
+    missing_cup: list[str]
+    missing_disc: list[str]
+    duplicated_disc: list[str]
+    duplicated_cup: list[str]
+```
+
+A classe `ConsistencyReporter` grava esse resultado em um arquivo de texto próprio, com um resumo em números e a lista de cada inconsistência encontrada:
+
+```text
+Optic_Analysis/output/dataset_consistency_report.txt
+```
+
+Esse relatório é útil para conferir a integridade do dataset antes de confiar nos resultados da análise — por exemplo, para perceber que uma pasta está incompleta ou que algum arquivo foi salvo com nome repetido.
+
+---
+
+# Features morfológicas do disco e do copo
+
+Além da Area CDR, o pipeline agora calcula medidas de **forma** — não só de tamanho — para o disco e para o copo ópticos, usando `skimage.measure.label` e `regionprops`:
+
+* **Perímetro** (`disc_perimeter`, `cup_perimeter`) — contorno da estrutura, em pixels.
+* **Excentricidade** (`disc_eccentricity`, `cup_eccentricity`) — o quanto a forma se aproxima de um círculo (0) ou de uma elipse alongada (perto de 1).
+* **Razão de aspecto** (`disc_aspect_ratio`, `cup_aspect_ratio`) — eixo maior dividido pelo eixo menor da elipse ajustada à forma.
+* **Circularidade** (`disc_circularity`, `cup_circularity`) — calculada como `4π × área / perímetro²`; vale `1` para um círculo perfeito e menos que `1` para formas irregulares.
+
+A extração é feita a partir da mesma máscara binária já usada para contar pixels (`disc_pixels`/`cup_pixels`), sem reler o arquivo de imagem. Quando a máscara tem mais de uma região conectada (ruído), apenas a maior é considerada. Quando a máscara está vazia, as quatro medidas são retornadas como `0.0` em vez de gerar erro.
+
+---
+
+# Tratamento de erros
+
+O pipeline foi ajustado para não travar por completo diante de problemas pontuais nos dados:
+
+* **Pasta do dataset não encontrada** — `GlaucomaBenchmarkReader` verifica se a pasta de disco/copo existe antes de tentar listá-la, e informa que o caminho deve ser conferido em `config/Settings.py`.
+* **Imagem corrompida ou em formato inválido** — `PillowImageReader.read()` relança o erro como `ImageReadError`; `OpticPairAnalyzer.analyze()` captura essa exceção, imprime um aviso com o `image_id` afetado e segue para a próxima imagem, em vez de interromper todo o processamento.
+* **CSV de features ou metadata não encontrados** — mensagens específicas orientam rodar a etapa de análise antes, ou conferir o caminho configurado.
+* **Split de treino/teste vazio** — se nenhum (ou todos os) `image_id` contiver `'train'`, o erro é sinalizado explicitamente em vez de falhar mais adiante, de forma confusa, durante o treino.
+
+Qualquer um desses erros, quando não tratado localmente, é capturado no bloco principal de `main.py` e exibido como uma mensagem curta, sem traceback.
+
+---
+
 # Resultados armazenados
 
 Para cada par de máscaras processado, o `DataFrame` contém atualmente:
@@ -535,8 +599,18 @@ area_cdr
 absolute_difference
 discrepancy_pct
 anatomical_consistency
-glaucoma_flag
+area_cdr_flag
+disc_perimeter
+disc_eccentricity
+disc_aspect_ratio
+disc_circularity
+cup_perimeter
+cup_eccentricity
+cup_aspect_ratio
+cup_circularity
 ```
+
+A sinalização preliminar por limiar de Area CDR foi renomeada de `glaucoma_flag` para **`area_cdr_flag`**. Isso evita ambiguidade com o `glaucoma_flag` real do dataset (o rótulo clínico, usado como alvo do treino do classificador em uma etapa posterior do projeto) — os dois deixam de ter o mesmo nome quando o CSV gerado aqui é combinado com o metadata do dataset.
 
 Esses dados constituem uma primeira etapa da extração de características morfológicas do projeto.
 
@@ -642,20 +716,43 @@ cup_area <= disc_area
 
 ---
 
+# Alterações recentes
+
+As seguintes alterações foram realizadas após a versão anterior deste README:
+
+* **Pareamento passou a reportar o que não bate.**
+
+  * `load_pairs()` agora retorna um `PairingResult`, não só os pares válidos.
+  * Discos sem copo, copos sem disco e nomes duplicados passam a ser identificados explicitamente.
+  * Um relatório próprio (`dataset_consistency_report.txt`) é gerado com esse resumo.
+
+* **Adicionadas features morfológicas de forma.**
+
+  * Perímetro, excentricidade, razão de aspecto e circularidade, calculadas via `skimage.measure.regionprops`.
+  * Calculadas tanto para o disco quanto para o copo, reaproveitando a mesma máscara já usada na contagem de pixels.
+
+* **A sinalização por limiar de Area CDR foi renomeada.**
+
+  * De `glaucoma_flag` para `area_cdr_flag`, para não colidir com o rótulo clínico real do dataset em etapas posteriores do projeto.
+
+* **Adicionado tratamento de erros pontuais.**
+
+  * Pasta do dataset ausente, imagem corrompida, CSV/metadata não encontrados e split de treino/teste vazio agora geram mensagens específicas em vez de interromper a execução de forma abrupta.
+  * Uma imagem com problema de leitura é ignorada individualmente; o restante do processamento continua.
+
+---
+
 # Próximas extensões possíveis
 
 Esta etapa representa apenas a primeira parte do pipeline planejado.
 
-Futuramente poderão ser adicionadas outras características morfológicas, como:
+Do que estava listado aqui, já foram implementados: **perímetro**, **circularidade**, **excentricidade**, **razão de aspecto** e o uso de **propriedades de elipses ajustadas** às máscaras (ver **Features morfológicas do disco e do copo**).
 
-* perímetro do disco e do copo;
-* circularidade;
-* excentricidade;
-* razão de aspecto;
+Futuramente ainda poderão ser adicionadas outras características morfológicas, como:
+
 * diâmetros horizontal e vertical;
 * Vertical Cup-to-Disc Ratio;
-* características do neuroretinal rim;
-* propriedades de elipses ajustadas às máscaras.
+* características do neuroretinal rim.
 
 Também poderão ser incorporadas informações das imagens originais de fundo de olho, como:
 

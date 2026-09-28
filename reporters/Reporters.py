@@ -6,8 +6,10 @@ from config.Settings import (
     CSV_FILENAME,
     OUTPUT_DIR,
     REPORT_FILENAME,
+    CONSISTENCY_REPORT_FILENAME,
     GLAUCOMA_AREA_CDR_THRESHOLD,
 )
+from readers.Readers import PairingResult
 
 
 class CsvReporter:
@@ -74,7 +76,7 @@ class TxtReporter:
             *(
                 [
                     f"  Threshold : {GLAUCOMA_AREA_CDR_THRESHOLD:.4f}",
-                    f"  Sinalizados: {df['glaucoma_flag'].sum()} / {len(df)}",
+                    f"  Sinalizados: {df['area_cdr_flag'].sum()} / {len(df)}",
                     "  Observação: sinalização preliminar; não representa diagnóstico.",
                 ]
                 if GLAUCOMA_AREA_CDR_THRESHOLD is not None
@@ -89,8 +91,7 @@ class TxtReporter:
         ]
 
         for _, row in df.nlargest(10, "area_cdr").iterrows():
-            flag = "⚠" if row["glaucoma_flag"] else " "
-
+            flag = "⚠️" if row["area_cdr_flag"] else "  "
             lines.append(
                 f"  {flag} {row['image_id']:<20} | "
                 f"Disco: {int(row['disc_pixels']):>8,} | "
@@ -103,3 +104,46 @@ class TxtReporter:
         dest.write_text("\n".join(lines), encoding="utf-8")
 
         print(f"  [TXT] Salvo em: {dest}")
+
+
+class ConsistencyReporter:
+
+    def save(self, result: PairingResult) -> None:
+        dest = OUTPUT_DIR / CONSISTENCY_REPORT_FILENAME
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        sep = "=" * 60
+        lines = [
+            sep,
+            "  RELATÓRIO — Consistência do Dataset (disco x copo)",
+            f"  Gerado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            sep,
+
+            "",
+            "RESUMO",
+            f"  Pares válidos          : {len(result.pairs)}",
+            f"  Discos sem copo        : {len(result.missing_cup)}",
+            f"  Copos sem disco        : {len(result.missing_disc)}",
+            f"  Nomes duplicados (disco): {len(result.duplicated_disc)}",
+            f"  Nomes duplicados (copo) : {len(result.duplicated_cup)}",
+        ]
+
+        self._add_section(lines, "DISCOS SEM COPO CORRESPONDENTE", result.missing_cup)
+        self._add_section(lines, "COPOS SEM DISCO CORRESPONDENTE", result.missing_disc)
+        self._add_section(lines, "NOMES DUPLICADOS NA PASTA DE DISCO", result.duplicated_disc)
+        self._add_section(lines, "NOMES DUPLICADOS NA PASTA DE COPO", result.duplicated_cup)
+
+        lines += ["", sep]
+
+        dest.write_text("\n".join(lines), encoding="utf-8")
+
+        print(f"  [TXT] Salvo em: {dest}")
+
+    @staticmethod
+    def _add_section(lines: list[str], title: str, items: list[str]) -> None:
+        lines.append("")
+        lines.append(title)
+        if items:
+            lines.extend(f"  - {item}" for item in items)
+        else:
+            lines.append("  (nenhum)")
