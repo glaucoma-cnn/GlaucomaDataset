@@ -2,6 +2,8 @@ import os
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
+from sklearn.model_selection import StratifiedKFold, cross_val_score
+from config.Settings import VALID_GLAUCOMA_LABELS, CROSS_VALIDATION_FOLDS, RANDOM_STATE
 
 from config.Settings import VALID_GLAUCOMA_LABELS
 
@@ -93,3 +95,10 @@ def save_result(df_result, output_folder, file_name):
     path = os.path.join(output_folder, file_name)
     df_result.to_csv(path, index=False)
     return path
+
+def cross_validate_model(df_train, features, target):
+    model = LogisticRegression()
+    cv = StratifiedKFold(n_splits=CROSS_VALIDATION_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+
+    scores = cross_val_score(model, df_train[features], df_train[target], cv=cv, scoring="accuracy")
+    print(f"  CV acurácia: {scores.mean():.2%} ± {scores.std():.2%}")
