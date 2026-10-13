@@ -1,13 +1,18 @@
 import os
+from datetime import datetime
+
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
-from sklearn.model_selection import StratifiedKFold, cross_val_score
-from config.Settings import VALID_GLAUCOMA_LABELS, CROSS_VALIDATION_FOLDS, RANDOM_STATE
+from sklearn.model_selection import StratifiedKFold
 
-from config.Settings import VALID_GLAUCOMA_LABELS
-
-
+from config.Settings import (
+    VALID_GLAUCOMA_LABELS,
+    CROSS_VALIDATION_FOLDS,
+    RANDOM_STATE,
+    GLAUCOMA_POSITIVE_LABEL,
+    GLAUCOMA_NEGATIVE_LABEL,
+)
 # aqui lê o csv que foi criado dentro do método analyze_optic_pairs() passando o endereço path da minha máquina
 def load_data(csv_path):
     try:
@@ -96,9 +101,45 @@ def save_result(df_result, output_folder, file_name):
     df_result.to_csv(path, index=False)
     return path
 
-def cross_validate_model(df_train, features, target):
-    model = LogisticRegression()
+def cross_validate_model(df_train, features, target,
+                         output_folder='results', file_name='cv_folds.csv'):
+    X = df_train[features]
+    y = df_train[target]
     cv = StratifiedKFold(n_splits=CROSS_VALIDATION_FOLDS, shuffle=True, random_state=RANDOM_STATE)
 
-    scores = cross_val_score(model, df_train[features], df_train[target], cv=cv, scoring="accuracy")
-    print(f"  CV acurácia: {scores.mean():.2%} ± {scores.std():.2%}")
+    rows = []
+    for fold, (idx_train, idx_val) in enumerate(cv.split(X, y), start=1):
+        model = LogisticRegression()
+        model.fit(X.iloc[idx_train], y.iloc[idx_train])
+
+        y_val = y.iloc[idx_val]
+        y_pred = model.predict(X.iloc[idx_val])
+
+        rows.append({
+            'fold': fold,
+            'n_treino': len(idx_train),
+            'n_validacao': len(idx_val),
+            'acertos': int((y_pred == y_val).sum()),
+            'erros': int((y_pred != y_val).sum()),
+            'acuracia': accuracy_score(y_val, y_pred),
+        })
+
+    df_folds = pd.DataFrame(rows)
+    mean = df_folds['acuracia'].mean()
+    std = df_folds['acuracia'].std(ddof=0)
+
+    summary = pd.DataFrame([
+        {'fold': 'media', 'acuracia': mean},
+        {'fold': 'desvio_padrao', 'acuracia': std},
+    ])
+    out = pd.concat([df_folds, summary], ignore_index=True).convert_dtypes()
+    out['acuracia'] = out['acuracia'].round(4)
+    out.insert(0, 'data_hora', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    out.insert(1, 'features', '+'.join(sorted(features)))
+
+    os.makedirs(output_folder, exist_ok=True)
+    path = os.path.join(output_folder, file_name)
+    out.to_csv(path, mode='a', header=not os.path.exists(path), index=False)
+
+    print(f"  CV acurácia: {mean:.2%} ± {std:.2%}")
+    return mean, std

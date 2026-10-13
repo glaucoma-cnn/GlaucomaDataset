@@ -792,4 +792,129 @@ Caso sejam necessários novos tipos de análise, novos módulos podem ser adicio
 
 ---
 
-# GlaucomaDataset
+# Alterações: seleção de features, validação cruzada e registro dos folds 13-10-2026
+ 
+Este documento descreve as mudanças feitas na pipeline de classificação de glaucoma (regressão logística sobre as features extraídas das máscaras de disco e copo ópticos).
+ 
+## Resumo
+ 
+1. **Seleção de features pelo terminal** com `argparse`.
+2. **Validação cruzada estratificada** com 5 folds, aplicada no conjunto de treino.
+3. **CSV com o resultado de cada fold** (acertos, erros, porcentagem de acerto) e com a média e o desvio padrão.
+
+---
+## 1. Seleção de features com `argparse`
+ 
+Antes, as features do modelo ficavam fixas no `main.py`:
+ 
+```python
+features = ['disc_pixels', 'cup_pixels', 'area_cdr']
+```
+ 
+Agora elas são escolhidas ao rodar o programa. Como o `OpticPairAnalyzer` já calcula todas as colunas de uma vez e salva no CSV de features, escolher features é apenas escolher colunas do DataFrame. Não é preciso `if` para cada feature.
+ 
+### Arquivos alterados
+ 
+**`config/Settings.py`**
+ 
+- `AVAILABLE_FEATURES`: lista de todas as features que podem ser escolhidas.
+- `DEFAULT_FEATURES`: features usadas quando nada é informado (`disc_pixels`, `cup_pixels`, `area_cdr`).
+- `METADATA_PATH`: caminho padrão do `metadata - standardized.csv`.
+Ficaram de fora `anatomical_consistency` e `area_cdr_flag`, porque são constantes nos dados atuais e não ajudam o modelo.
+ 
+**`main.py`**
+ 
+- Nova função `parse_args()` com as opções abaixo.
+- `run_glaucoma_pipeline(features, metadata_path)` passou a receber os parâmetros em vez de usar valores fixos e caminhos da máquina.
+- O CSV de features é lido com `OUTPUT_DIR / CSV_FILENAME`, o mesmo caminho em que o `CsvReporter` grava.
+### Opções disponíveis
+ 
+| Opção | O que faz | Padrão |
+|---|---|---|
+| `--features F1 F2 ...` | Features usadas no modelo | `DEFAULT_FEATURES` |
+| `--skip-analysis` | Pula a extração das imagens e reutiliza o CSV já gerado | desligado |
+| `--metadata CAMINHO` | Caminho do `metadata - standardized.csv` | `METADATA_PATH` |
+ 
+### Features disponíveis
+ 
+```
+disc_pixels  cup_pixels  area_cdr  absolute_difference  discrepancy_pct
+disc_perimeter  disc_eccentricity  disc_aspect_ratio  disc_circularity
+cup_perimeter  cup_eccentricity  cup_aspect_ratio  cup_circularity
+```
+ 
+Qualquer outro nome gera o erro `invalid choice`.
+ 
+### Exemplos de uso
+ 
+```bash
+# usa tudo no padrão
+python main.py
+ 
+# escolhe as features
+python main.py --features area_cdr cup_circularity disc_eccentricity
+Os parâmetros só têm efeito quando digitados no terminal, na mesma linha do comando.
+ 
+---
+ ## 2. Validação cruzada estratificada (5 folds)
+ 
+**Arquivo alterado:** `LogisticRegression/Analysis_cup_disc.py` (função `cross_validate_model`).
+ 
+### Como funciona
+ 
+O conjunto de **treino** é dividido em 5 pedaços (folds). O processo se repete 5 vezes: em cada rodada, o modelo treina com 4 pedaços e é avaliado no pedaço restante. Ao final há 5 notas de acurácia, resumidas pela média e pelo desvio padrão.
+ 
+| Rodada | Treina com | Avalia em |
+|---|---|---|
+| 1 | folds 2, 3, 4, 5 | fold 1 |
+| 2 | folds 1, 3, 4, 5 | fold 2 |
+| 3 | folds 1, 2, 4, 5 | fold 3 |
+| 4 | folds 1, 2, 3, 5 | fold 4 |
+| 5 | folds 1, 2, 3, 4 | fold 5 |
+ 
+### Por que estratificada
+ 
+Com `StratifiedKFold`, cada fold mantém a mesma proporção de casos com e sem glaucoma do conjunto de treino. Sem isso, um fold poderia ficar com poucos casos positivos e a nota daquela rodada deixaria de ser confiável.
+ 
+### Parâmetros
+ 
+Vêm de `config/Settings.py`:
+ 
+- `CROSS_VALIDATION_FOLDS = 5`: número de folds.
+- `RANDOM_STATE = 42`: fixa o embaralhamento, então os folds e os resultados são os mesmos a cada execução.
+- `shuffle=True`: embaralha os dados antes de dividir.
+### Duas avaliações diferentes
+ 
+| | Validação cruzada | Avaliação no teste |
+|---|---|---|
+| Onde | Dentro do treino | No conjunto de teste, separado desde o início |
+| Como | 5 rodadas, cada uma com um fold de validação | Treina uma vez e testa uma vez |
+| Resultado | Média ± desvio padrão | Uma acurácia |
+O `± X%` impresso na saída é o desvio padrão das 5 notas da validação cruzada. Ele mede a estabilidade dentro do treino e não se aplica à acurácia do teste.
+ 
+### Observação sobre o split
+ 
+A divisão treino/teste vem do metadata original e é feita pelo texto `train` no `image_id`. O treino tem bem menos imagens que o teste e parece vir de poucas bases, enquanto o teste mistura várias. Por isso é normal a acurácia da validação cruzada ficar acima da acurácia do teste: elas medem coisas diferentes (dados do mesmo grupo do treino versus dados de outras fontes).
+ 
+---
+ ## 3. CSV com os resultados dos folds
+ 
+**Arquivo gerado:** `results/cv_folds.csv`
+ 
+A cada execução, a função grava as linhas dos 5 folds e as linhas de resumo no mesmo arquivo, sempre **adicionando ao final** (`mode='a'`). O cabeçalho só é escrito na primeira vez. Assim, rodar com parâmetros diferentes acumula as execuções em um único arquivo.
+## Dependências
+ 
+```bash
+pip install scikit-learn pandas numpy pillow scikit-image
+```
+ 
+O pacote se chama `scikit-learn`, mas é importado como `sklearn`.
+ 
+## Arquivos modificados
+ 
+| Arquivo | Mudança |
+|---|---|
+| `config/Settings.py` | `AVAILABLE_FEATURES`, `DEFAULT_FEATURES`, `METADATA_PATH` |
+| `main.py` | `parse_args()`, `run_glaucoma_pipeline(features, metadata_path)`, chamada da validação cruzada |
+| `LogisticRegression/Analysis_cup_disc.py` | `cross_validate_model` com `StratifiedKFold` e gravação do CSV dos folds |
+ 

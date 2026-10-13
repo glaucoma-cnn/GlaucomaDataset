@@ -13,3 +13,6 @@ __pycache__/
 datasets/
 .glaucoma/
 audit/
+
+results/
+Optic_Analysis/output/
