@@ -61,16 +61,11 @@ def run_glaucoma_pipeline(features, metadata_path):
 
     fileCSV = merge_features_with_labels(fileCSV, metadata)
 
-    # aqui está a analise de acurácia do modelo treinado (as imagens de treino e teste já são
-    # pre-classificadas dentro do metadata original, segue o arquivo LogisticRegression/Analysis_cup_disc)
-    df_train, df_test = split_train_test(fileCSV)
-    cross_validate_model(df_train, features, target)
-    model = train_model(df_train, features, target)
-    result = predict(model, df_test, features)
-    accuracy = evaluate_accuracy(df_test, result, target)
-    print(f"  Acurácia: {accuracy:.2%}")
-
-    save_result(result, 'results', 'glaucoma_predictions.csv')
+    fileCSV = prepare_experiment_groups(fileCSV)
+    # A: cinco folds com todas as imagens elegíveis, respeitando os grupos.
+    cross_validate_model(fileCSV, features, target)
+    # B: seis folds; cada dataset inteiro fica de fora do treino uma vez.
+    leave_one_dataset_out(fileCSV, features, target)
 
 
 if __name__ == "__main__":
