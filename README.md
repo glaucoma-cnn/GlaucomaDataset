@@ -793,6 +793,8 @@ Caso sejam necessários novos tipos de análise, novos módulos podem ser adicio
 ---
 
 # Alterações: seleção de features, validação cruzada e registro dos folds 13-10-2026
+
+> Histórico da implementação de 13/10/2026. O protocolo descrito nesta seção foi substituído pelas alterações de 30/10/2026, documentadas ao final deste README.
  
 Este documento descreve as mudanças feitas na pipeline de classificação de glaucoma (regressão logística sobre as features extraídas das máscaras de disco e copo ópticos).
  
@@ -853,6 +855,8 @@ python main.py
  
 # escolhe as features
 python main.py --features area_cdr cup_circularity disc_eccentricity
+```
+
 Os parâmetros só têm efeito quando digitados no terminal, na mesma linha do comando.
  
 ---
@@ -917,4 +921,126 @@ O pacote se chama `scikit-learn`, mas é importado como `sklearn`.
 | `config/Settings.py` | `AVAILABLE_FEATURES`, `DEFAULT_FEATURES`, `METADATA_PATH` |
 | `main.py` | `parse_args()`, `run_glaucoma_pipeline(features, metadata_path)`, chamada da validação cruzada |
 | `LogisticRegression/Analysis_cup_disc.py` | `cross_validate_model` com `StratifiedKFold` e gravação do CSV dos folds |
- 
+
+---
+
+# Atualização das folds de validação— preparação dos grupos e avaliação entre datasets
+
+Esta atualização altera a preparação dos dados e os protocolos de avaliação da regressão logística. A extração de características das máscaras e o modelo utilizado foram mantidos.
+
+## Por que foi necessário alterar a avaliação
+
+As seis bases utilizadas — CRFO, DRISHTI, G1020, ORIGA, PAPILA e REFUGE1 — não possuem uma organização única de identificação de pacientes, nomes de imagens e divisão de treino e teste. Por isso, não é adequado interpretar os nomes dos arquivos como uma separação padronizada de todo o benchmark.
+
+Na implementação anterior, a função `split_train_test` colocava no treino qualquer imagem cujo `image_id` contivesse `train`. Todas as outras eram colocadas no teste. Essa regra selecionava imagens de treino da REFUGE1 e da DRISHTI, enquanto as outras bases ficavam inteiramente no teste. Imagens de validação também eram tratadas como teste quando seus nomes não continham `train`.
+
+A validação cruzada anterior era aplicada somente ao conjunto formado por essa regra, e não às seis bases reunidas. O problema estava na falta de uma convenção comum de separação: o nome do arquivo, isoladamente, não garantia um protocolo uniforme entre as bases.
+
+Mesmo quando as seis bases são reunidas em uma validação cruzada estratificada, a estratificação equilibra os rótulos, mas não padroniza as bases nem garante independência entre pacientes. Treino e validação podem conter imagens das mesmas origens e, sem agrupamento, até do mesmo paciente ou fotografias duplicadas. Assim, uma acurácia nessa mistura, isoladamente, não sustenta uma conclusão confiável de generalização para outra base. Isso não invalida automaticamente a validação cruzada: limita a conclusão que pode ser tirada dela.
+
+Para separar essas perguntas, foram implementados dois experimentos complementares e uma preparação comum dos grupos.
+
+## 1. Preservação das informações do metadata
+
+**Alteração:** `load_metadata` passou a preservar `patient_id`, `original_name` e o caminho da fotografia, além do identificador e do rótulo. Também identifica a base de origem pelo prefixo do `image_id`.
+
+**Por que foi necessária:** essas informações eram descartadas, mas são necessárias para reconhecer pacientes, verificar duplicatas e reservar uma base inteira no LODO. Elas controlam a separação dos dados e não são utilizadas como características da regressão logística. A união das tabelas também passou a exigir um registro por `image_id`, evitando multiplicação silenciosa de amostras por IDs repetidos.
+
+## 2. Identificação dos pacientes — `get_patient_id`
+
+**Alteração:** utiliza o paciente informado no metadata, quando disponível. Na CRFO, extrai a identificação do nome original e mantém os dois olhos do mesmo paciente juntos. O identificador é associado à base de origem.
+
+**Por que foi necessária:** a identificação de paciente não é padronizada. A PAPILA informa esse campo; na CRFO ele pode ser recuperado pelo nome. Separar imagens de um mesmo paciente entre treino e teste comprometeria a independência da avaliação. Nas demais bases, IDs sequenciais de imagens não foram considerados IDs de paciente sem evidência dessa relação.
+
+## 3. Verificação de fotografias idênticas — `get_image_hash`
+
+**Alteração:** calcula um hash SHA-256 a partir das dimensões e dos pixels da fotografia convertida para RGB.
+
+**Por que foi necessária:** nomes diferentes não garantem fotografias diferentes. Essa comparação permite reconhecer cópias exatas, inclusive entre bases. O hash não é um embedding e não entra como característica do modelo. Ele não detecta necessariamente versões recortadas, redimensionadas ou com pixels alterados.
+
+## 4. Criação e preparação dos grupos — `create_groups` e `prepare_experiment_groups`
+
+**Alteração:** imagens ligadas pelo paciente, pelo nome original repetido dentro da mesma base ou por pixels idênticos recebem o mesmo `group_id`. Relações transitivas também são respeitadas: se A está ligada a B e B a C, as três ficam juntas. A tabela de grupos é salva para conferência.
+
+**Por que foi necessária:** a unidade de separação precisa ser o grupo relacionado, e não apenas cada linha da tabela. Onde não há paciente identificável, cada imagem começa independente, podendo ainda ser ligada a outras pelas verificações de nome e de pixels. Essa medida reduz o risco de vazamento, mas não comprova independência por paciente quando a informação não existe.
+
+## 5. Experimento A — validação cruzada estratificada com grupos
+
+**Alteração:** `cross_validate_model` passou a utilizar `StratifiedGroupKFold` com cinco folds, semente 42 e todas as imagens elegíveis das seis bases. As antigas marcações de treino, teste e validação deixam de determinar a divisão. Em cada rodada, quatro folds treinam e um valida.
+
+**Por que foi necessária:** permite avaliar o modelo na mistura das seis bases, tentando preservar a proporção das classes e mantendo cada grupo inteiro no mesmo fold. Diferentemente do `StratifiedKFold` anterior, considera a dependência identificada entre imagens. Os tamanhos e as proporções dos folds podem variar para respeitar os grupos.
+
+**Interpretação:** esse experimento mede o desempenho dentro do conjunto combinado. Como as mesmas bases podem estar representadas no treino e na validação, ele não demonstra, sozinho, desempenho em uma base desconhecida.
+
+## 6. Experimento B — Leave-One-Dataset-Out (LODO)
+
+**Alteração:** `leave_one_dataset_out` cria seis folds. A cada rodada, uma base inteira é teste e as outras cinco são candidatas ao treino. Por exemplo: CRFO no teste e DRISHTI, G1020, ORIGA, PAPILA e REFUGE1 no treino. Se um grupo do teste aparecer em outra base, suas imagens são retiradas do treino, mantendo o teste inteiro.
+
+**Por que foi necessária:** a validação da mistura não isola a influência da origem dos dados. O LODO avalia como o modelo treinado nas outras bases se comporta ao receber uma origem que ficou fora daquele treinamento. Isso permite observar diferenças de generalização entre bases, sem depender das marcações inconsistentes de treino e teste dos arquivos.
+
+No LODO, a origem define a divisão; não se utiliza `StratifiedGroupKFold`, pois isso repartiria as bases em vez de reservar uma delas inteira.
+
+## 7. Treinamento e avaliação por fold — `evaluate_folds`
+
+**Alteração:** os dois experimentos compartilham a mesma rotina, reutilizando `train_model`, `predict` e `evaluate_accuracy`. Um novo modelo é treinado em cada fold. Antes disso, são verificados conjuntos vazios, treino com apenas uma classe e grupos presentes simultaneamente no treino e na avaliação.
+
+**Por que foi necessária:** os protocolos devem mudar a divisão dos dados, mantendo o mesmo procedimento de treinamento e cálculo das métricas. As verificações impedem que uma divisão inválida seja avaliada silenciosamente. São registrados tamanhos, exclusões do treino, acertos, erros, acurácia e composição de cada fold.
+
+## 8. Registro dos resultados — `save_fold_results`
+
+**Alteração:** salva as métricas, a média simples das acurácias, o desvio padrão populacional (`ddof=0`), as características utilizadas e a data da execução. Salva também quais imagens participaram de cada conjunto.
+
+**Por que foi necessária:** uma única acurácia esconde diferenças entre folds e bases. O registro permite conferir a composição das divisões e comparar a variação dos resultados. No LODO, cada base tem o mesmo peso na média, independentemente de seu tamanho. O desvio padrão descreve essa variação; não é um intervalo de confiança.
+
+| Arquivo | Conteúdo |
+|---|---|
+| `results/experiment_groups.csv` | Identificação dos pacientes disponíveis, hashes e grupos por imagem. |
+| `results/cv_folds.csv` | Métricas dos cinco folds do experimento A e resumo. |
+| `results/lodo_folds.csv` | Métricas dos seis folds do experimento B e resumo. |
+| `results/cv_folds_assignments.csv` | Composição dos conjuntos por fold do A. |
+| `results/lodo_folds_assignments.csv` | Composição dos conjuntos por fold do B. |
+
+Os CSVs atuais são substituídos a cada execução, em vez de acrescentar linhas ao histórico do protocolo antigo. Para preservar uma execução, seus arquivos devem ser copiados antes da próxima.
+
+## 9. Atualização do `main.py`
+
+**Alteração:** após carregar e unir características e metadata, o fluxo passou a preparar os grupos e executar os experimentos A e B. A chamada à divisão antiga baseada em `train` foi retirada desse fluxo; a função antiga permanece no arquivo, mas não é utilizada pelos novos experimentos.
+
+**Por que foi necessária:** a avaliação passa a seguir os dois protocolos explicitamente definidos, em vez de depender da convenção de nomes de cada base. A pipeline atual também deixa de gerar uma nova versão do antigo `glaucoma_predictions.csv`.
+
+```python
+fileCSV = merge_features_with_labels(fileCSV, metadata)
+fileCSV = prepare_experiment_groups(fileCSV)
+
+# Experimento A: cinco folds com grupos.
+cross_validate_model(fileCSV, features, target)
+
+# Experimento B: uma base inteira no teste por rodada.
+leave_one_dataset_out(fileCSV, features, target)
+```
+
+Os comandos de execução e de seleção de características continuam os mesmos. `--skip-analysis` reutiliza o CSV de características, mas continua executando a preparação dos grupos e os dois experimentos.
+
+## Problemas encontrados e limitações
+
+### Identificação incompleta de pacientes
+
+Nem todas as bases fornecem um identificador de paciente utilizável. O agrupamento usa essa informação quando ela existe e recupera a identificação da CRFO pelo nome original. Sem essa informação, não é possível garantir que imagens diferentes pertencem a pessoas diferentes. Os identificadores sequenciais de imagens não são interpretados como pacientes sem evidência dessa relação.
+
+### Duplicatas e diferenças de representação
+
+O hash identifica fotografias com dimensões e pixels RGB idênticos, mas uma versão recortada, redimensionada ou com pixels alterados pode receber outra assinatura. Portanto, a verificação de duplicatas exatas não elimina toda possibilidade de imagens relacionadas sem identificação comum.
+
+### Diferenças entre bases
+
+A estratificação organiza a proporção das classes, mas não padroniza a origem das imagens. O experimento A avalia o conjunto combinado; o experimento B reserva uma origem inteira para avaliar a generalização entre bases. Esses protocolos respondem a perguntas diferentes e devem ser interpretados separadamente.
+
+### Limite de iterações da regressão logística
+
+O uso conjunto de características em escalas diferentes pode dificultar o ajuste da regressão logística. O modelo permanece configurado como `LogisticRegression()`, com limite padrão de 100 iterações. Quando o algoritmo atinge esse limite antes de satisfazer o critério de convergência, emite um aviso de que o ajuste pode estar incompleto.
+
+As iterações são etapas de ajuste dos coeficientes dentro de cada treinamento, não imagens ou folds. Aumentar `max_iter` e avaliar padronização com uma `Pipeline` são possibilidades futuras; essas mudanças não foram implementadas. Se houver padronização, ela deve ser ajustada somente no treino de cada fold para evitar vazamento de informação.
+
+### Arquivos gerados e dependências locais
+
+Os arquivos de execução em `results/` e as dependências locais em `.glaucoma/` não fazem parte desta atualização versionada. As dependências necessárias ao projeto estão descritas na seção de instalação. A descrição dos CSVs neste README documenta o comportamento do código, sem incluir esses arquivos no repositório.
