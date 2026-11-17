@@ -60,6 +60,8 @@ def run_glaucoma_pipeline(features, metadata_path):
     metadata = load_metadata(metadata_path)
 
     fileCSV = merge_features_with_labels(fileCSV, metadata)
+    available_features = [feature for feature in AVAILABLE_FEATURES if feature in fileCSV.columns]
+    report_feature_correlations(fileCSV, available_features)
 
     fileCSV = prepare_experiment_groups(fileCSV)
     # A: cinco folds com todas as imagens elegíveis, respeitando os grupos.
