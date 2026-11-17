@@ -988,7 +988,9 @@ No LODO, a origem define a divisão; não se utiliza `StratifiedGroupKFold`, poi
 
 ## 8. Registro dos resultados — `save_fold_results`
 
-**Alteração:** salva as métricas, a média simples das acurácias, o desvio padrão populacional (`ddof=0`), as características utilizadas e a data da execução. Salva também quais imagens participaram de cada conjunto.
+Os arquivos `cv_folds.csv` e `lodo_folds.csv` incluem sensibilidade (proporção dos casos com glaucoma identificados), especificidade (proporção dos casos sem glaucoma identificados) e F1-score da classe glaucoma. Cada métrica é calculada por fold e resumida pela média e pelo desvio padrão. Valores indefinidos ficam em branco e não entram no resumo da respectiva métrica.
+
+**Alteração:** salva a média simples e o desvio padrão populacional (`ddof=0`) de cada métrica, as características utilizadas e a data da execução. Salva também quais imagens participaram de cada conjunto.
 
 **Por que foi necessária:** uma única acurácia esconde diferenças entre folds e bases. O registro permite conferir a composição das divisões e comparar a variação dos resultados. No LODO, cada base tem o mesmo peso na média, independentemente de seu tamanho. O desvio padrão descreve essa variação; não é um intervalo de confiança.
 
@@ -1021,26 +1023,38 @@ leave_one_dataset_out(fileCSV, features, target)
 
 Os comandos de execução e de seleção de características continuam os mesmos. `--skip-analysis` reutiliza o CSV de características, mas continua executando a preparação dos grupos e os dois experimentos.
 
-## Problemas encontrados e limitações
+## Rodízio de características
 
-### Identificação incompleta de pacientes
+O rodízio exploratório avaliou 50 combinações distintas das 13 características disponíveis. Incluiu a configuração padrão, o conjunto completo, um teste individual por característica, 13 combinações que omitem uma característica por vez e 22 subconjuntos sorteados com semente 42. Cada combinação usou as mesmas divisões de treino e teste nos cinco folds da validação cruzada (CV) e nas seis rodadas do LODO.
 
-Nem todas as bases fornecem um identificador de paciente utilizável. O agrupamento usa essa informação quando ela existe e recupera a identificação da CRFO pelo nome original. Sem essa informação, não é possível garantir que imagens diferentes pertencem a pessoas diferentes. Os identificadores sequenciais de imagens não são interpretados como pacientes sem evidência dessa relação.
+Como os mesmos folds foram usados para comparar as combinações, uma estimativa de desempenho após a seleção de características requer uma avaliação independente.
 
-### Duplicatas e diferenças de representação
+### Planilha do rodízio
 
-O hash identifica fotografias com dimensões e pixels RGB idênticos, mas uma versão recortada, redimensionada ou com pixels alterados pode receber outra assinatura. Portanto, a verificação de duplicatas exatas não elimina toda possibilidade de imagens relacionadas sem identificação comum.
+A planilha local `Resultados_50_combinacoes.xlsx` reúne os 50 testes e as 550 avaliações por rodada. Os identificadores vão de `T01` a `T50`, com `T01` indicando a configuração padrão. O arquivo Excel e os scripts auxiliares são mantidos localmente.
 
-### Diferenças entre bases
+| Aba | Conteúdo |
+|---|---|
+| Resultados | Uma linha por combinação, com as características em ordem alfabética e as métricas médias e os avisos de convergência dos dois protocolos. A ordem inicial segue o F1 médio no LODO, do maior para o menor. |
+| Média e desvio | Média e desvio padrão das quatro métricas para cada combinação e protocolo. |
+| Por fold | Resultados de cada rodada, com as bases de teste, os tamanhos dos conjuntos e as contagens de acertos e erros. |
+| Cobertura | Quantidade de testes que incluem cada característica e os identificadores desses testes. |
+| Método | Origem dos dados, critérios do rodízio e orientações para interpretar as métricas e os avisos. |
 
-A estratificação organiza a proporção das classes, mas não padroniza a origem das imagens. O experimento A avalia o conjunto combinado; o experimento B reserva uma origem inteira para avaliar a generalização entre bases. Esses protocolos respondem a perguntas diferentes e devem ser interpretados separadamente.
+### Como interpretar as métricas
+
+| Métrica | O que mede |
+|---|---|
+| Acurácia | Proporção de imagens classificadas corretamente. |
+| Sensibilidade | Proporção dos casos com glaucoma que o modelo identificou. |
+| Especificidade | Proporção dos casos sem glaucoma que o modelo classificou corretamente. |
+| F1-score | Média harmônica entre a sensibilidade e a precisão da classe glaucoma. A precisão é a proporção das previsões de glaucoma que estavam corretas. |
+| Desvio padrão | Quanto a métrica variou entre folds ou bases. Um valor baixo indica pouca variação, mesmo quando a média é baixa. |
+
+Em um fold com as duas classes, sensibilidade de 0%, especificidade de 100% e F1-score de 0 indicam que o modelo classificou todas as imagens como sem glaucoma. Quando essa classe é majoritária, esse comportamento ainda pode gerar uma acurácia alta. Por isso, a acurácia deve ser lida junto com as métricas por classe.
 
 ### Limite de iterações da regressão logística
 
 O uso conjunto de características em escalas diferentes pode dificultar o ajuste da regressão logística. O modelo permanece configurado como `LogisticRegression()`, com limite padrão de 100 iterações. Quando o algoritmo atinge esse limite antes de satisfazer o critério de convergência, emite um aviso de que o ajuste pode estar incompleto.
 
 As iterações são etapas de ajuste dos coeficientes dentro de cada treinamento, não imagens ou folds. Aumentar `max_iter` e avaliar padronização com uma `Pipeline` são possibilidades futuras; essas mudanças não foram implementadas. Se houver padronização, ela deve ser ajustada somente no treino de cada fold para evitar vazamento de informação.
-
-### Arquivos gerados e dependências locais
-
-Os arquivos de execução em `results/` e as dependências locais em `.glaucoma/` não fazem parte desta atualização versionada. As dependências necessárias ao projeto estão descritas na seção de instalação. A descrição dos CSVs neste README documenta o comportamento do código, sem incluir esses arquivos no repositório.

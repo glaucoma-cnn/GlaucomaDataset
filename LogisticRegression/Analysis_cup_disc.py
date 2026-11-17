@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 from PIL import Image
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import StratifiedGroupKFold
 
 from config.Settings import (
@@ -181,6 +181,37 @@ def save_result(df_result, output_folder, file_name):
     return path
 
 
+def report_feature_correlations(df, features, output_folder='results', threshold=0.90):
+    correlations = df[features].corr(method='pearson')
+    matrix = correlations.rename_axis('feature').reset_index()
+    save_result(matrix, output_folder, 'correlacao_pearson.csv')
+
+    pairs = []
+    for index, first in enumerate(features):
+        for second in features[index + 1:]:
+            coefficient = correlations.loc[first, second]
+            if abs(coefficient) >= threshold:
+                pairs.append((first, second, coefficient, abs(coefficient)))
+
+    redundant = pd.DataFrame(pairs, columns=['feature_1', 'feature_2', 'pearson_r', 'abs_r'])
+    redundant = redundant.sort_values('abs_r', ascending=False)
+    save_result(redundant, output_folder, 'pares_correlacionados.csv')
+    print(f'  Pearson: {len(redundant)} pares com |r| >= {threshold:.2f}.')
+
+
+def evaluate_error_metrics(y_true, y_pred):
+    # A classe 1 representa glaucoma e a classe 0 representa ausência de glaucoma.
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+    positives = tp + fn
+    negatives = tn + fp
+    f1_denominator = 2 * tp + fp + fn
+    return {
+        'sensibilidade': tp / positives if positives else float('nan'),
+        'especificidade': tn / negatives if negatives else float('nan'),
+        'f1_score': 2 * tp / f1_denominator if f1_denominator else float('nan'),
+    }
+
+
 # experimento A: divide todas as imagens em cinco partes, respeitando os grupos
 def cross_validate_model(df, features, target,
                          output_folder='results', file_name='cv_folds.csv'):
@@ -234,6 +265,7 @@ def evaluate_folds(df, features, target, splits, output_folder, file_name):
             'acertos': int((y_pred == y_val).sum()),
             'erros': int((y_pred != y_val).sum()),
             'acuracia': evaluate_accuracy(validation, result, target),
+            **evaluate_error_metrics(y_val, y_pred),
         })
         for role, subset in [('treino', train), ('teste', validation)]:
             assignments.append(subset[['image_id', 'dataset', 'group_id']].assign(fold=fold, papel=role))
@@ -244,15 +276,16 @@ def evaluate_folds(df, features, target, splits, output_folder, file_name):
 # aqui salvamos as notas e as imagens de cada fold, junto com a média e o desvio
 def save_fold_results(rows, assignments, features, output_folder, file_name):
     df_folds = pd.DataFrame(rows)
-    mean = df_folds['acuracia'].mean()
-    std = df_folds['acuracia'].std(ddof=0)
+    metrics = df_folds[['acuracia', 'sensibilidade', 'especificidade', 'f1_score']]
+    means = metrics.mean()
+    deviations = metrics.std(ddof=0)
 
     summary = pd.DataFrame([
-        {'fold': 'media', 'acuracia': mean},
-        {'fold': 'desvio_padrao', 'acuracia': std},
+        {'fold': 'media', **means.to_dict()},
+        {'fold': 'desvio_padrao', **deviations.to_dict()},
     ])
     out = pd.concat([df_folds, summary], ignore_index=True).convert_dtypes()
-    out['acuracia'] = out['acuracia'].round(4)
+    out[metrics.columns] = out[metrics.columns].round(4)
     out.insert(0, 'data_hora', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     out.insert(1, 'features', '+'.join(sorted(features)))
 
@@ -260,5 +293,5 @@ def save_fold_results(rows, assignments, features, output_folder, file_name):
     fold_images = pd.concat(assignments, ignore_index=True)
     save_result(fold_images, output_folder, f'{Path(file_name).stem}_assignments.csv')
 
-    print(f"  {Path(file_name).stem}: acurácia {mean:.2%} ± {std:.2%}")
-    return mean, std
+    print(f"  {Path(file_name).stem}: acurácia {means['acuracia']:.2%} ± {deviations['acuracia']:.2%}")
+    return means['acuracia'], deviations['acuracia']
